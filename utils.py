@@ -1,11 +1,12 @@
 from openai import OpenAI
 import os
-from typing import Optional, Dict, Any
+from dotenv import load_dotenv
 
-# Initialize the OpenAI client with OpenRouter
+load_dotenv()  
+
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY", "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"),
+    api_key=os.getenv("OPENROUTER_API_KEY"),
 )
 
 def get_LLM_response(
