@@ -1,0 +1,44 @@
+[
+  {
+    "query_id": "Q001",
+    "query": "solar panel efficiency improvements using nanostructures",
+    "description": "Patents about improving solar cell efficiency with nanomaterials",
+    "relevant_doc_ids": [
+      "US20160012345",
+      "US20150098765",
+      "US20170123456"
+    ],
+    "notes": "Focus on nanostructure-based improvements, not just general efficiency"
+  },
+  {
+    "query_id": "Q002",
+    "query": "battery storage systems for electric vehicles",
+    "description": "Patents about EV battery technology and energy storage",
+    "relevant_doc_ids": [
+      "US20170054321",
+      "US20180076543"
+    ],
+    "notes": "Include both battery chemistry and management systems"
+  },
+  {
+    "query_id": "Q003",
+    "query": "machine learning for medical image classification",
+    "description": "Patents about ML/AI for medical imaging and diagnosis",
+    "relevant_doc_ids": [
+      "US20190123456",
+      "US20190234567",
+      "US20200345678"
+    ],
+    "notes": "Focus on diagnostic applications, not general image processing"
+  },
+  {
+    "query_id": "Q004",
+    "query": "YOUR QUERY HERE",
+    "description": "Brief description of what this query is about",
+    "relevant_doc_ids": [
+      "PATENT_NUMBER_1",
+      "PATENT_NUMBER_2"
+    ],
+    "notes": "Any additional context or edge cases to consider"
+  }
+]
