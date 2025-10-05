@@ -33,8 +33,24 @@ docker-compose up -d
 docker-compose ps
 ```
 
-# Run the ingestion pipeline (using the API service container)
+```
+## Run the ingestion pipeline (using the API service container)
 docker-compose exec api python ingestion.py --input-dir /path/to/patents
+```
+
+### Access the API
+The API will be available at http://localhost:8000
+
+```
+# Test search endpoint
+curl "http://localhost:8000/search?query=solar+panel&top_k=3"
+
+# Test full RAG pipeline
+curl -X POST "http://localhost:8000/query" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "search all patent involving solar panel technology", "use_rag": true}'
+```
+
 
 ## System Architecture
 
