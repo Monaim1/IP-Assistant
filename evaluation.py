@@ -122,5 +122,5 @@ def search_wrapper(query: str, k: int) -> List[str]:
 
 if __name__ == "__main__":
     retriever = PatentRetriever()
-    test_dataset = pd.read_json('retrieval_dataset.jsonl', lines=True)
+    test_dataset = pd.read_json('evals/retrieval_dataset.jsonl', lines=True)
     evaluate_retriever(test_dataset, search_wrapper)
