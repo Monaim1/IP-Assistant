@@ -4,10 +4,12 @@ from dotenv import load_dotenv
 
 def get_LLM_client():
     """Initialize and return the OpenAI client with OpenRouter settings."""
-    load_dotenv()  # Ensure environment variables are loaded
+    # Try to load .env from multiple possible locations
+    load_dotenv()
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         raise ValueError("OPENROUTER_API_KEY not found in environment variables")
+        
     return OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=api_key,
