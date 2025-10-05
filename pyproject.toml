@@ -8,6 +8,7 @@ dependencies = [
     "faiss-cpu>=1.12.0",
     "langchain>=0.3.27",
     "openai>=2.1.0",
+    "pandas>=2.3.3",
     "pymilvus>=2.6.2",
     "sentence-transformers==3.0.1",
     "tiktoken>=0.11.0",
