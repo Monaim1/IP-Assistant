@@ -8,6 +8,34 @@ A Retrieval-Augmented Generation (RAG) system for patent analysis, implementing 
 - **Hybrid Retrieval**: Combines vector similarity (Milvus) and lexical BM25 (Elasticsearch/OpenSearch)
 - **Re-ranking**: Implements cross-encoder or LLM-based scoring for improved relevance
 
+## Getting Started
+
+### 1. Prerequisites
+- Docker and Docker Compose
+- OpenRouter API key
+
+### 2. Set Up Environment
+```bash
+# Clone the repository
+git clone repo_url
+cd IP-Assistant
+
+# Create .env file with your OpenRouter API key
+cp .env.example .env
+# Edit .env and add your OPENROUTER_API_KEY
+```
+
+```
+# Start all services (Milvus, etcd, MinIO, API)
+docker-compose up -d
+
+# Verify all services are running
+docker-compose ps
+```
+
+# Run the ingestion pipeline (using the API service container)
+docker-compose exec api python ingestion.py --input-dir /path/to/patents
+
 ## System Architecture
 
 ### 1. Data Processing
