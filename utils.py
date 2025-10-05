@@ -33,7 +33,6 @@ def get_LLM_response(
 
 
 if __name__ == "__main__":
-    # Example usage
     try:
         response = get_LLM_response("What is the meaning of life?")
         print(response)
