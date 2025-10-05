@@ -57,7 +57,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: Dockerfile
     container_name: ip-assistant-api
     depends_on:
       milvus-standalone:
@@ -71,7 +71,18 @@ services:
     volumes:
       - ./.env:/app/.env:ro
     restart: unless-stopped
-
+  
+  chat:
+    build: .
+    command: streamlit run app/chat_ui.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    volumes:
+      - ./.env:/app/.env:ro
 volumes:
   etcd_data:
   minio_data:
