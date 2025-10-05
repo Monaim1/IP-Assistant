@@ -3,14 +3,6 @@ import pandas as pd
 from retriever import PatentRetriever
 
 
-def _unique_preserve_order(seq):
-    seen = set()
-    out = []
-    for x in seq:
-        if x not in seen:
-            seen.add(x)
-            out.append(x)
-    return out
 
 def _first_hit_rank(retrieved: List[str], relevant: str, k_cap: int) -> int:
     """1-indexed rank of the first relevant doc within top-k_cap; k_cap+1 if not found."""
@@ -27,7 +19,7 @@ def evaluate_retriever(
     query_col: str = "query",
 ) -> Dict[int, Dict[str, float]]:
     """
-    Evaluate a retriever assuming each row is ONE independent (query, relevant_id) pair.
+    Evaluate a retriever assuming each row is 1 independent (query, relevant_id) pair.
     Required columns: `query_col` and `id_col`.
     """
     assert query_col in df.columns and id_col in df.columns, \
@@ -48,7 +40,6 @@ def evaluate_retriever(
         rel = str(row[id_col])
 
         retrieved = [str(x) for x in retriever(q, max_k)]
-        retrieved = _unique_preserve_order(retrieved)
 
         for k in ks:
             topk = retrieved[:k]
@@ -96,12 +87,10 @@ def evaluate_retriever(
             "AvgRank": round(avg_rank, 2),
         }
 
-    # Pretty print
-    print("\n" + "="*80)
-    print("Retriever Evaluation Results (Micro-Averaged, row = independent query)")
+
+    print("Retriever Evaluation Results (Micro-Averaged, each row is an independent query)")
     print("="*80)
     print(f"Number of rows (queries): {n_rows}")
-    print("-"*80)
     print("K     | Success@K | Precision@K | Recall@K | F1@K  | MRR@K | AvgRank")
     print("-"*80)
     for k in ks:
