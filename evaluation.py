@@ -1,218 +1,120 @@
 from typing import List, Dict, Callable, Iterable
-import math
-import json
 import pandas as pd
 from retriever import PatentRetriever
 
 
-# Helper functions for metric computation
-def compute_precision_at_k(retrieved: List[str], relevant: set, k: int) -> float:
-    """
-    Compute Precision@K: fraction of retrieved documents that are relevant.
-    
-    Args:
-        retrieved: List of retrieved document IDs (in ranked order)
-        relevant: Set of relevant document IDs
-        k: Number of top results to consider
-    
-    Returns:
-        Precision@K score (0.0 to 1.0)
-    """
-    if k == 0 or len(retrieved) == 0:
-        return 0.0
-    
-    retrieved_at_k = retrieved[:k]
-    num_relevant_retrieved = sum(1 for doc_id in retrieved_at_k if doc_id in relevant)
-    return num_relevant_retrieved / k
+def _unique_preserve_order(seq):
+    seen = set()
+    out = []
+    for x in seq:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
 
-
-def compute_recall_at_k(retrieved: List[str], relevant: set, k: int) -> float:
-    """
-    Compute Recall@K: fraction of relevant documents that are retrieved.
-    
-    Args:
-        retrieved: List of retrieved document IDs (in ranked order)
-        relevant: Set of relevant document IDs
-        k: Number of top results to consider
-    
-    Returns:
-        Recall@K score (0.0 to 1.0)
-    """
-    if len(relevant) == 0:
-        return 0.0
-    
-    retrieved_at_k = retrieved[:k]
-    num_relevant_retrieved = sum(1 for doc_id in retrieved_at_k if doc_id in relevant)
-    return num_relevant_retrieved / len(relevant)
-
-
-def compute_f1_at_k(precision: float, recall: float) -> float:
-    """
-    Compute F1@K: harmonic mean of precision and recall.
-    
-    Args:
-        precision: Precision@K score
-        recall: Recall@K score
-    
-    Returns:
-        F1@K score (0.0 to 1.0)
-    """
-    if precision + recall == 0:
-        return 0.0
-    return 2 * (precision * recall) / (precision + recall)
-
-
-def compute_success_at_k(retrieved: List[str], relevant: set, k: int) -> float:
-    """
-    Compute Success@K: binary indicator if any relevant document is in top-k.
-    
-    Args:
-        retrieved: List of retrieved document IDs (in ranked order)
-        relevant: Set of relevant document IDs
-        k: Number of top results to consider
-    
-    Returns:
-        1.0 if any relevant document is found, 0.0 otherwise
-    """
-    retrieved_at_k = retrieved[:k]
-    return 1.0 if any(doc_id in relevant for doc_id in retrieved_at_k) else 0.0
-
-
-def compute_rank(retrieved: List[str], relevant: set, max_rank: int = 100) -> int:
-    """
-    Compute the rank of the first relevant document.
-    
-    Args:
-        retrieved: List of retrieved document IDs (in ranked order)
-        relevant: Set of relevant document IDs
-        max_rank: Maximum rank to return if no relevant document is found
-    
-    Returns:
-        Rank of first relevant document (1-indexed), or max_rank if not found
-    """
-    for i, doc_id in enumerate(retrieved, 1):
-        if doc_id in relevant:
+def _first_hit_rank(retrieved: List[str], relevant: str, k_cap: int) -> int:
+    """1-indexed rank of the first relevant doc within top-k_cap; k_cap+1 if not found."""
+    for i, doc_id in enumerate(retrieved[:k_cap], 1):
+        if doc_id == relevant:
             return i
-    return max_rank
-
+    return k_cap + 1
 
 def evaluate_retriever(
-    df: 'pd.DataFrame',
+    df: "pd.DataFrame",
     retriever: Callable[[str, int], List[str]],
     ks: Iterable[int] = (1, 3, 5, 10),
+    id_col: str = "document_id",
+    query_col: str = "query",
 ) -> Dict[int, Dict[str, float]]:
     """
-    Evaluate a retriever using standard IR metrics.
-    
-    Args:
-        df: DataFrame with 'query' and 'document_id' columns
-        retriever: Function that takes (query: str, k: int) and returns list of document IDs
-        ks: List of k values to evaluate at (e.g., [1, 3, 5, 10])
-        
-    Returns:
-        Dictionary mapping k to metric scores
+    Evaluate a retriever assuming each row is ONE independent (query, relevant_id) pair.
+    Required columns: `query_col` and `id_col`.
     """
-    ks = sorted(set(ks))
+    assert query_col in df.columns and id_col in df.columns, \
+        f"DataFrame must contain '{query_col}' and '{id_col}'"
+
+    ks = sorted(set(int(k) for k in ks))
     max_k = max(ks) if ks else 10
-    
-    # Initialize accumulators for micro-averaged metrics
-    metrics = {k: {
-        "true_positives": 0,
-        "false_positives": 0,
-        "false_negatives": 0,
-        "success_count": 0,
-        "total_rank": 0,
-        "query_count": 0
-    } for k in ks}
-    
-    # Convert document_id to string for consistent comparison
-    df = df.copy()
-    df['document_id'] = df['document_id'].astype(str)
-    
-    # Group by query to handle multiple relevant documents
-    query_groups = df.groupby('query')
-    num_queries = len(query_groups)
-    
-    for query, group in query_groups:
-        # Get all relevant document IDs for this query
-        relevant_docs = set(group['document_id'].unique())
-        
-        # Get ranked list of documents from retriever
-        retrieved_docs = [str(doc_id) for doc_id in retriever(query, max_k)]
-        
-        # For each k, calculate metrics
+
+    # Micro-accumulators
+    acc = {
+        k: dict(tp=0, fp=0, fn=0, success=0, mrr_sum=0.0, total_rank=0, n=0)
+        for k in ks
+    }
+
+    n_rows = len(df)
+    for _, row in df.iterrows():
+        q = str(row[query_col])
+        rel = str(row[id_col])
+
+        retrieved = [str(x) for x in retriever(q, max_k)]
+        retrieved = _unique_preserve_order(retrieved)
+
         for k in ks:
-            retrieved_at_k = retrieved_docs[:k]
-            
-            # Count true positives, false positives, false negatives
-            true_positives = sum(1 for doc_id in retrieved_at_k if doc_id in relevant_docs)
-            false_positives = len(retrieved_at_k) - true_positives
-            false_negatives = len(relevant_docs) - true_positives
-            
-            # Accumulate counts for micro-averaging
-            metrics[k]["true_positives"] += true_positives
-            metrics[k]["false_positives"] += false_positives
-            metrics[k]["false_negatives"] += false_negatives
-            
-            # Success@K (binary)
-            success = compute_success_at_k(retrieved_docs, relevant_docs, k)
-            metrics[k]["success_count"] += success
-            
-            # Rank of first relevant document
-            rank = compute_rank(retrieved_docs, relevant_docs, max_k + 1)
-            metrics[k]["total_rank"] += rank
-            
-            metrics[k]["query_count"] += 1
-    
-    # Calculate final metrics using micro-averaging
+            topk = retrieved[:k]
+            hit = rel in topk
+            tp = 1 if hit else 0
+            fp = (len(set(topk)) - tp)  # duplicates already removed
+            fn = 0 if hit else 1
+
+            # rank & MRR@K
+            rank = _first_hit_rank(retrieved, rel, k)
+            mrr = 1.0 / rank if hit else 0.0
+
+            a = acc[k]
+            a["tp"] += tp
+            a["fp"] += fp
+            a["fn"] += fn
+            a["success"] += 1 if hit else 0
+            a["mrr_sum"] += mrr
+            a["total_rank"] += rank
+            a["n"] += 1
+
+    # Finalize micro-averaged metrics
     results = {}
     for k in ks:
-        m = metrics[k]
-        tp = m["true_positives"]
-        fp = m["false_positives"]
-        fn = m["false_negatives"]
-        
-        # Micro-averaged Precision and Recall
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        f1 = compute_f1_at_k(precision, recall)
-        
-        # Success rate and average rank
-        success_rate = m["success_count"] / m["query_count"] if m["query_count"] > 0 else 0.0
-        avg_rank = m["total_rank"] / m["query_count"] if m["query_count"] > 0 else max_k + 1
-        
+        a = acc[k]
+        tp, fp, fn = a["tp"], a["fp"], a["fn"]
+        n = max(a["n"], 1)
+
+        precision = tp / (tp + fp) if (tp + fp) else 0.0
+        recall = tp / (tp + fn) if (tp + fn) else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+        success_rate = a["success"] / n
+        avg_rank = a["total_rank"] / n
+        mrr_at_k = a["mrr_sum"] / n
+
+        # Small numeric guard
+        recall = min(recall, 1.0)
+
         results[k] = {
             "Success@K": round(success_rate, 4),
             "Precision@K": round(precision, 4),
             "Recall@K": round(recall, 4),
             "F1@K": round(f1, 4),
-            "AvgRank": round(avg_rank, 2)
+            "MRR@K": round(mrr_at_k, 4),
+            "AvgRank": round(avg_rank, 2),
         }
-    
-    # Print results
+
+    # Pretty print
     print("\n" + "="*80)
-    print("Retriever Evaluation Results (Micro-Averaged)")
+    print("Retriever Evaluation Results (Micro-Averaged, row = independent query)")
     print("="*80)
-    print(f"Number of queries: {num_queries}")
+    print(f"Number of rows (queries): {n_rows}")
     print("-"*80)
-    print("K     | " + 
-          "Success@K  | " + 
-          "Precision@K  | " + 
-          "Recall@K   | " + 
-          "F1@K     | " + 
-          "AvgRank")
+    print("K     | Success@K | Precision@K | Recall@K | F1@K  | MRR@K | AvgRank")
     print("-"*80)
-    
     for k in ks:
         m = results[k]
-        print(f"{str(k).ljust(6)}| " +
-              f"{m['Success@K']:.4f}   | " +
-              f"{m['Precision@K']:.4f}     | " +
-              f"{m['Recall@K']:.4f}  | " +
-              f"{m['F1@K']:.4f} | " +
+        print(f"{str(k).ljust(6)}| "
+              f"{m['Success@K']:.4f}   | "
+              f"{m['Precision@K']:.4f}      | "
+              f"{m['Recall@K']:.4f}   | "
+              f"{m['F1@K']:.4f} | "
+              f"{m['MRR@K']:.4f} | "
               f"{m['AvgRank']:.2f}")
-    
     return results
+
 
 def search_wrapper(query: str, k: int) -> List[str]:
     results = retriever.search(query, top_k=k)
