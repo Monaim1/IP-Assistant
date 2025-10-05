@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Install Streamlit
+RUN pip install streamlit
 
 # Copy dependency files
 COPY pyproject.toml uv.lock ./
