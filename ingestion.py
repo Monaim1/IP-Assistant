@@ -209,8 +209,12 @@ def flush_batch():
         rows[k].clear()
 
 
-def process_document(data: Dict) -> None:
-    """Process a single patent document and add chunks to batch."""
+def process_document(data: Dict) -> int:
+    """Process a single patent document and add chunks to batch.
+    
+    Returns:
+        Number of chunks created from this document.
+    """
     # Extract metadata
     metadata = {
         "application_number": select_scalar(data.get("application_number"), 128),
@@ -225,6 +229,7 @@ def process_document(data: Dict) -> None:
         "abandon_date_ts": to_epoch(data.get("abandon_date", "")),
     }
     
+    chunks_created = 0
     # Chunk text fields and add to batch
     for field in TEXT_FIELDS:
         text_value = data.get(field, "")
@@ -236,10 +241,13 @@ def process_document(data: Dict) -> None:
             rows["section"].append(field)
             rows["text"].append(chunk)
             rows["embedding"].append(None)  # Compute later in batch
+            chunks_created += 1
             
             # Flush if batch is full
             if len(rows["text"]) >= BATCH_SIZE:
                 flush_batch()
+    
+    return chunks_created
 
 
 def clear_collection() -> None:
@@ -277,10 +285,8 @@ def ingest_patents(ip_limit: int = 20) -> None:
     total_chunks = 0
     for data in tqdm(ip_files, desc="Ingesting patents"):
         try:
-            before = len(rows["text"])
-            process_document(data)
-            after = len(rows["text"])
-            total_chunks += (after - before)
+            chunks_added = process_document(data)
+            total_chunks += chunks_added
         except Exception as e:
             print(f"Failed to process document: {e}")
             continue
@@ -300,4 +306,4 @@ def ingest_patents(ip_limit: int = 20) -> None:
 
 
 if __name__ == "__main__":
-    ingest_patents(ip_limit=100)
+    ingest_patents(ip_limit=1000)
