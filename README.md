@@ -1,4 +1,4 @@
-# IP RAG System
+# IP Assistant System
 
 ## Overview
 A Retrieval-Augmented Generation (RAG) system for patent analysis, implementing contextual embeddings and hybrid retrieval methods.
