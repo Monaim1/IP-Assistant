@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 import os
 from dotenv import load_dotenv
 from utils import get_LLM_response
+from retriever import PatentRetriever
 
 # Load environment variables
 load_dotenv()
@@ -14,39 +15,127 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Initialize retriever
+retriever = None
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize the retriever on startup."""
+    global retriever
+    try:
+        milvus_host = os.getenv("MILVUS_HOST", "127.0.0.1")
+        milvus_port = os.getenv("MILVUS_PORT", "19530")
+        retriever = PatentRetriever(host=milvus_host, port=milvus_port)
+        print(f"✓ Connected to Milvus at {milvus_host}:{milvus_port}")
+    except Exception as e:
+        print(f"⚠ Warning: Could not initialize retriever: {str(e)}")
+        print("  API will run in LLM-only mode without RAG capabilities")
+
 class QueryRequest(BaseModel):
     query: str
     model: str = "moonshotai/kimi-k2"
     max_tokens: int = 2000
     temperature: float = 0.7
-    context: str = None
+    top_k: int = 5
+    use_rag: bool = True
+
+class RetrievalResult(BaseModel):
+    publication_number: Optional[str]
+    text: str
+    score: float
+    section: Optional[str]
+    decision: Optional[str]
 
 class QueryResponse(BaseModel):
     response: str
     model: str
     tokens_used: int
+    retrieved_documents: Optional[List[RetrievalResult]] = None
 
 @app.get("/")
 async def root():
-    return {"message": "IP Assistant API is running. Use /query to interact with the model."}
+    return {
+        "message": "IP Assistant API is running",
+        "endpoints": {
+            "/query": "POST - Query the RAG system",
+            "/search": "POST - Search patents without LLM",
+            "/health": "GET - Health check"
+        },
+        "rag_enabled": retriever is not None
+    }
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "milvus_connected": retriever is not None
+    }
+
+@app.post("/search")
+async def search_patents(query: str, top_k: int = 5):
+    """Search for relevant patents without LLM generation."""
+    if retriever is None:
+        raise HTTPException(status_code=503, detail="Retriever not initialized. Check Milvus connection.")
+    
+    try:
+        results = retriever.search(query, top_k=top_k)
+        return {"query": query, "results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @app.post("/query", response_model=QueryResponse)
 async def query_patents(request: QueryRequest):
+    """Query the RAG system with optional retrieval."""
     try:
+        retrieved_docs = None
+        context = None
+        
+        # Retrieve relevant documents if RAG is enabled
+        if request.use_rag and retriever is not None:
+            try:
+                results = retriever.search(request.query, top_k=request.top_k)
+                retrieved_docs = results
+                
+                # Build context from retrieved documents
+                if results:
+                    context_parts = []
+                    for i, doc in enumerate(results, 1):
+                        context_parts.append(
+                            f"Document {i} (Patent: {doc.get('publication_number', 'N/A')}, Score: {doc.get('score', 0):.3f}):\n{doc.get('text', '')}"
+                        )
+                    context = "\n\n".join(context_parts)
+            except Exception as e:
+                print(f"Retrieval warning: {str(e)}")
+                # Continue without RAG if retrieval fails
+        
+        # Build the prompt with context if available
+        if context:
+            prompt = f"""Based on the following patent documents, answer the user's question.
+
+                        Retrieved Documents:
+                        {context}
+
+                        User Question: {request.query}
+
+                        Please provide a comprehensive answer based on the retrieved documents."""
+        else:
+            prompt = request.query
+        
+        # Get LLM response
         response = get_LLM_response(
-            prompt=request.query,
+            prompt=prompt,
             model=request.model,
             max_tokens=request.max_tokens,
-            temperature=request.temperature,
-            context=request.context
+            temperature=request.temperature
         )
+        
         return {
             "response": response,
             "model": request.model,
-            "tokens_used": len(response.split())  # Approximate token count
+            "tokens_used": len(response.split()),
+            "retrieved_documents": retrieved_docs if request.use_rag else None
         }
     except Exception as e:
-        # Extract error message from the exception
         error_msg = str(e)
         if "Error getting AI response" in error_msg:
             error_msg = error_msg.split("Error getting AI response: ")[-1]
