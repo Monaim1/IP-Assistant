@@ -38,24 +38,21 @@ Chunk: "The system improves photon capture by embedding nanostructures in the su
 ### 3. Indexing
 #### Vector Index (Milvus)
 - Stores embeddings of contextualized chunks
-- Supported models:
   - sentence-transformers
-  - OpenAI/Anthropic embeddings
 
 #### BM25 Index (ElasticSearch/OpenSearch)
 - Indexes contextualized chunk text
 - Enables exact term matching (e.g., "US20160234A1")
 
-### 4. Retrieval Pipeline
-1. Process user query
-2. Execute parallel searches:
-   - Vector search (Milvus)
-   - Keyword search (BM25 via Elasticsearch/OpenSearch)
-3. Merge and deduplicate results
-4. Re-rank using:
-   - Cross-encoder (e.g., ms-marco-MiniLM-L-6-v2) or
-   - Lightweight LLM relevance scoring
-5. Return top-K chunks (e.g., 5–10)
+### 4. Retrieval Pipeline (Current Implementation)
+- Process user query
+- Vector search using Milvus
+- Return top-K chunks (e.g., 5–10)
+
+Planned Enhancements:
+- Add BM25 keyword search (Elasticsearch/OpenSearch)
+- Implement result re-ranking with cross-encoders
+- Add lightweight LLM relevance scoring
 
 ### 5. Answer Generation
 - **Input**:
@@ -65,15 +62,3 @@ Chunk: "The system improves photon capture by embedding nanostructures in the su
   - Construct prompt with query and context
   - Send to LLM (Claude/GPT)
   - Generate structured output (answer + cited patent IDs/chunks)
-
-## Monitoring & Observability
-- **Performance Metrics**:
-  - Query latency
-  - Recall @K
-  - Re-ranker confidence scores
-- **Cost Tracking**:
-  - Embedding costs
-  - Contextualization costs
-- **System Health**:
-  - Milvus cluster status
-  - Elasticsearch/OpenSearch cluster health
