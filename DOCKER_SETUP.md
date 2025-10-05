@@ -42,12 +42,12 @@ curl http://localhost:8000/health
 # Simple query without RAG
 curl -X POST "http://localhost:8000/query" \
   -H "Content-Type: application/json" \
-  -d '{"query": "What is a patent?", "use_rag": false}'
+  -d '{"query": "solar panel technology", "use_rag": false}'
 
 # Query with RAG (requires data in Milvus)
 curl -X POST "http://localhost:8000/query" \
   -H "Content-Type: application/json" \
-  -d '{"query": "solar panel technology", "use_rag": true, "top_k": 5}'
+  -d '{"query": "search all patent involving solar panel technology", "use_rag": true, "top_k": 5}'
 
 # Search only (no LLM)
 curl -X POST "http://localhost:8000/search?query=solar%20panel&top_k=3"
