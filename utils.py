@@ -1,24 +1,20 @@
 from openai import OpenAI
 import os
+import requests
 from dotenv import load_dotenv
 
 def get_LLM_client():
-    """Initialize and return the OpenAI client with OpenRouter settings."""
-    # Try to load .env from multiple possible locations
+    """Initialize and return the OpenAI client with Ollama settings."""
     load_dotenv()
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        raise ValueError("OPENROUTER_API_KEY not found in environment variables")
-        
     return OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=api_key,
+        base_url=os.getenv("OLLAMA_API_BASE", "http://ollama:11434/v1"),
+        api_key="ollama",  # API key is not used by Ollama
     )
 
 def get_LLM_response(
     prompt: str,
-    model: str = "moonshotai/kimi-k2",
-    max_tokens: int = 2000,
+    model: str = "qwen2.5:1.5b",  # Using qwen2.5:1.5b as the default model
+    max_tokens: int = 32000,        # Reduced from 10000 as it's too high for most models
     temperature: float = 0.7,
     **kwargs
 ) -> str:
