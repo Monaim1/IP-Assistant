@@ -104,5 +104,5 @@ Planned Enhancements:
   - Retrieved contextualized chunks (as citations)
 - **Process**:
   - Construct prompt with query and context
-  - Send to LLM (Claude/GPT)
+  - Send to LLM (Claude/GPT/Openrouter)
   - Generate structured output (answer + cited patent IDs/chunks)
