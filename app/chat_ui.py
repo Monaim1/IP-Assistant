@@ -4,7 +4,7 @@ import requests
 st.set_page_config(page_title="Patent Assistant", page_icon="📄")
 
 # API configuration
-API_URL = "http://api:8000/query"
+API_URL = "http://ip-assistant-api:8000/query"
 
 # Initialize chat history
 if "messages" not in st.session_state:
@@ -30,10 +30,14 @@ if prompt := st.chat_input("Ask about patents..."):
         full_response = ""
         
         try:
+            # Get model from environment variables with fallback
+            import os
+            model = os.getenv("MODEL", "moonshotai/kimi-k2")
+            
             # Call your RAG API
             response = requests.post(
                 API_URL,
-                json={"query": prompt, "use_rag": True},
+                json={"query": prompt, "use_rag": True, "model": model},
                 headers={"Content-Type": "application/json"}
             )
             
