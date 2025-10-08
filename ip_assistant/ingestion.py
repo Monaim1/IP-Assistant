@@ -15,8 +15,8 @@ from pymilvus import (
 )
 
 # Config
-MILVUS_HOST = "127.0.0.1"
-MILVUS_PORT = "19530"
+MILVUS_HOST = os.getenv("MILVUS_HOST", "127.0.0.1")
+MILVUS_PORT = os.getenv("MILVUS_PORT", "19530")
 COLLECTION = "ip_chunks"
 EMB_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"  # 384-d
 EMB_DIM = 384
@@ -246,7 +246,7 @@ def process_document(data: Dict) -> int:
 
 
 def clear_collection() -> None:
-    connections.connect("default", host="127.0.0.1", port="19530")
+    connections.connect("default", host=MILVUS_HOST, port=MILVUS_PORT)
     
     if utility.has_collection(COLLECTION):
         print(f"  Clearing existing collection '{COLLECTION}'...")

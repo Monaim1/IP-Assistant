@@ -21,5 +21,9 @@ COPY . .
 
 EXPOSE 8000
 
+# Ensure system 'python' and 'pip' use the project venv
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
 # Run the app
 CMD ["uv", "run", "uvicorn", "ip_assistant.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -73,6 +73,7 @@ services:
       - "8000:8000"
     volumes:
       - ./.env:/app/.env:ro
+      - ./RawData:/app/RawData:ro
     restart: unless-stopped
     # Enable resolving host.docker.internal inside container
     extra_hosts:
