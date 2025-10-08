@@ -22,14 +22,14 @@ EMB_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"  # 384-d
 EMB_DIM = 384
 DATA_DIR = Path("./ip_json")                # folder with your JSON files
 BATCH_SIZE = 512
-CHUNK_SIZE = 256         # tokens (max tokens per chunk, model limit is 512)
-CHUNK_OVERLAP = 50       # tokens (overlap between chunks)
-METRIC = "COSINE"        # cosine works well with this model
+CHUNK_SIZE = 256         
+CHUNK_OVERLAP = 50       
+METRIC = "COSINE"        # Similarity metric
 
 # Which long text fields to chunk/ingest as retrievable content:
-TEXT_FIELDS = ["abstract", "summary"]  # Adjust as needed
+TEXT_FIELDS = ["abstract", "summary"] 
 
-# Fields to extract from source JSON
+# Fields to extract from raw JSON data
 RELEVANT_FIELDS = [
     # Identifiers & Linking
     "publication_number",
@@ -65,6 +65,7 @@ def to_epoch(date_str: str) -> int:
     if not ds:
         return 0
     # Try common formats
+    
     fmts = ["%Y-%m-%d", "%Y/%m/%d", "%d-%m-%Y", "%Y-%m", "%Y"]
     for f in fmts:
         try:
@@ -72,9 +73,7 @@ def to_epoch(date_str: str) -> int:
             return int(dt.timestamp())
         except ValueError:
             continue
-    # Fallback: best-effort
     try:
-        # Keep only digits and dashes
         ds2 = "".join(ch for ch in ds if ch.isdigit() or ch in "-/")
         for f in ["%Y-%m-%d", "%Y/%m/%d", "%Y-%m"]:
             try:
@@ -121,7 +120,7 @@ def select_scalar(v, maxlen=None) -> str:
 # MILVUS SETUP
 
 def create_milvus_schema() -> List[FieldSchema]:
-    """Define the Milvus collection schema."""
+    """Defining Milvus collection schema."""
     return [
         FieldSchema(name="pk", dtype=DataType.INT64, is_primary=True, auto_id=True),
         FieldSchema(name="application_number", dtype=DataType.VARCHAR, max_length=128),
@@ -141,13 +140,12 @@ def create_milvus_schema() -> List[FieldSchema]:
 
 
 def init_milvus_collection() -> Collection:
-    """Initialize or load existing Milvus collection."""
+    """Initializing or loading existing Milvus collection."""
     connections.connect("default", host=MILVUS_HOST, port=MILVUS_PORT)
     
     if utility.has_collection(COLLECTION):
         return Collection(COLLECTION)
     
-    # Create new collection
     fields = create_milvus_schema()
     schema = CollectionSchema(fields, description="Chunked IP documents (RAG-ready)")
     coll = Collection(COLLECTION, schema=schema)
@@ -175,7 +173,6 @@ def init_milvus_collection() -> Collection:
 
 # INGESTION PIPELINE
 
-# Initialize global variables (will be set up in ingest_patents)
 coll = None
 model = None
 tokenizer = None
@@ -199,8 +196,6 @@ def flush_batch():
     # Compute any pending embeddings
     compute_embeddings()
     
-    # Insert in column-major order (Milvus requirement)
-    # Exclude 'pk' field since it has auto_id=True
     data_to_insert = [rows[field.name] for field in coll.schema.fields if field.name != "pk"]
     coll.insert(data_to_insert)
     
@@ -251,10 +246,6 @@ def process_document(data: Dict) -> int:
 
 
 def clear_collection() -> None:
-    """Clear all data from the collection if it exists."""
-    from pymilvus import utility
-    
-    # Ensure connection is established
     connections.connect("default", host="127.0.0.1", port="19530")
     
     if utility.has_collection(COLLECTION):
@@ -267,10 +258,7 @@ def ingest_patents(ip_limit: int = 20) -> None:
     """Main ingestion pipeline."""
     global coll, model, tokenizer, rows
     
-    # Clear existing collection before starting new ingestion
     clear_collection()
-    
-    # Initialize Milvus collection
     coll = init_milvus_collection()
     
     # Initialize models
@@ -278,7 +266,7 @@ def ingest_patents(ip_limit: int = 20) -> None:
     tokenizer = AutoTokenizer.from_pretrained(EMB_MODEL_NAME)
     
     # Initialize data buffers
-    rows = {field.name: [] for field in coll.schema.fields}
+    rows = { field.name: [] for field in coll.schema.fields}
     
     ip_files = get_IP_data(ip_limit)
     

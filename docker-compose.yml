@@ -1,6 +1,8 @@
 services:
+
   etcd:
     image: quay.io/coreos/etcd:v3.5.5
+    profiles: ["rag"]
     environment:
       - ETCD_AUTO_COMPACTION_MODE=revision
       - ETCD_AUTO_COMPACTION_RETENTION=1000
@@ -17,6 +19,7 @@ services:
 
   minio:
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    profiles: ["rag"]
     environment:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
@@ -35,6 +38,7 @@ services:
   milvus-standalone:
     image: milvusdb/milvus:v2.4.3
     container_name: milvus-standalone
+    profiles: ["rag"]
     depends_on:
       - etcd
       - minio
@@ -57,20 +61,36 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: Dockerfile
     container_name: ip-assistant-api
-    depends_on:
-      milvus-standalone:
-        condition: service_healthy
+    # No hard dependency on RAG or local Ollama; API works in LLM-only mode
     environment:
       - MILVUS_HOST=milvus-standalone
       - MILVUS_PORT=19530
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OLLAMA_API_BASE=http://host.docker.internal:11434/v1
+      - OLLAMA_MODEL=qwen2.5:1.5b
     ports:
       - "8000:8000"
     volumes:
       - ./.env:/app/.env:ro
     restart: unless-stopped
+    # Enable resolving host.docker.internal inside container
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  
+  chat:
+    build: .
+    command: streamlit run app/chat_ui.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      - MODEL=qwen2.5:1.5b
+    volumes:
+      - ./.env:/app/.env:ro
+
 
 volumes:
   etcd_data:

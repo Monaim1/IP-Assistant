@@ -3,7 +3,7 @@
 ## Prerequisites
 
 1. Docker and Docker Compose installed
-2. `.env` file with your `OPENROUTER_API_KEY`
+2. `.env` file (optional). For local Ollama you do not need any API keys.
 
 ## Quick Start
 
@@ -11,38 +11,54 @@
 
 ```bash
 cp .env.example .env
-# Edit .env and add your OPENROUTER_API_KEY
 ```
 
-### 2. Start all services
+### 2. Start services
 
 ```bash
-docker-compose up -d
+# Lightweight (API + Chat; Ollama runs on host)
+docker compose up -d
+
+# With RAG stack (Milvus/MinIO/etcd)
+docker compose --profile rag up -d
 ```
 
 This will start:
-- **etcd**: Metadata storage for Milvus
-- **minio**: Object storage for Milvus
-- **milvus-standalone**: Vector database
-- **api**: Your RAG API service
+- Always-on: **api** (FastAPI), **chat** (Streamlit UI)
+- With `--profile rag`: **etcd**, **minio**, **milvus-standalone**
 
 ### 3. Check service health
 
 ```bash
 # Check all services are running
-docker-compose ps
+docker compose ps
 
 # Check API health
 curl http://localhost:8000/health
+
+# Check Ollama (running locally) is ready
+curl http://localhost:11434/api/tags
 ```
 
-### 4. Test the API
+### 4. Pull a model in Ollama (first-time, on host)
 
 ```bash
-# Simple query without RAG
+# Recommended small model
+ollama pull qwen2.5:1.5b
+```
+
+### 5. Test the API
+
+```bash
+# Simple query without RAG (local LLM)
 curl -X POST "http://localhost:8000/query" \
   -H "Content-Type: application/json" \
-  -d '{"query": "solar panel technology", "use_rag": false}'
+  -d '{"query": "solar panel technology", "use_rag": false, "model": "qwen2.5:1.5b"}'
+
+# Streamed response (tokens as they generate)
+curl -N -X POST "http://localhost:8000/query/stream" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "solar panel technology", "use_rag": false, "model": "qwen2.5:1.5b"}'
 
 # Query with RAG (requires data in Milvus)
 curl -X POST "http://localhost:8000/query" \
@@ -64,10 +80,10 @@ curl -X POST "http://localhost:8000/search?query=solar%20panel&top_k=3"
 
 ```bash
 # Stop all services
-docker-compose down
+docker compose down
 
 # Stop and remove volumes (⚠️ deletes all data)
-docker-compose down -v
+docker compose down -v
 ```
 
 ## Rebuilding the API
@@ -75,5 +91,5 @@ docker-compose down -v
 After code changes:
 
 ```bash
-docker-compose up -d --build api
+docker compose up -d --build api
 ```
