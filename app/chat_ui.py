@@ -5,6 +5,7 @@ st.set_page_config(page_title="Patent Assistant", page_icon="📄")
 
 # API configuration
 API_URL = "http://ip-assistant-api:8000/query"
+API_URL_STREAM = "http://ip-assistant-api:8000/query/stream"
 
 # Initialize chat history
 if "messages" not in st.session_state:
@@ -33,19 +34,25 @@ if prompt := st.chat_input("Ask about patents..."):
             # Get model from environment variables with fallback
             import os
             model = os.getenv("MODEL") or os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b")
-            
-            # Call your RAG API
-            response = requests.post(
-                API_URL,
+
+            # Stream from the API
+            with requests.post(
+                API_URL_STREAM,
                 json={"query": prompt, "use_rag": True, "model": model},
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response.status_code == 200:
-                full_response = response.json().get("response", "No response from API")
-            else:
-                full_response = f"Error: {response.status_code} - {response.text}"
-                
+                headers={"Content-Type": "application/json"},
+                stream=True,
+                timeout=300,
+            ) as resp:
+                if resp.status_code != 200:
+                    full_response = f"Error: {resp.status_code} - {resp.text}"
+                else:
+                    for chunk in resp.iter_content(chunk_size=512):
+                        if not chunk:
+                            continue
+                        text = chunk.decode("utf-8", errors="ignore")
+                        full_response += text
+                        message_placeholder.markdown(full_response)
+        
         except Exception as e:
             full_response = f"Error connecting to API: {str(e)}"
         
