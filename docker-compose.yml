@@ -80,7 +80,7 @@ services:
   
   chat:
     build: .
-    command: streamlit run app/chat_ui.py --server.port=8501 --server.address=0.0.0.0
+    command: streamlit run ip_assistant/ui/chat_ui.py --server.port=8501 --server.address=0.0.0.0
     ports:
       - "8501:8501"
     depends_on:
