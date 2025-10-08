@@ -22,6 +22,7 @@ RUN uv sync --frozen --no-dev
 # Copy application code
 COPY . .
 
+
 # Expose the port
 EXPOSE 8000
 

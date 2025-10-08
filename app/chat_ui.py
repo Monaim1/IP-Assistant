@@ -32,7 +32,7 @@ if prompt := st.chat_input("Ask about patents..."):
         try:
             # Get model from environment variables with fallback
             import os
-            model = os.getenv("MODEL", "moonshotai/kimi-k2")
+            model = os.getenv("MODEL") or os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b")
             
             # Call your RAG API
             response = requests.post(

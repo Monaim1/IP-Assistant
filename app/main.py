@@ -18,10 +18,11 @@ app = FastAPI(
 # Initialize retriever
 retriever = None
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the retriever on startup."""
+def _init_retriever_if_needed() -> Optional[PatentRetriever]:
+    """(Re)initialize the retriever if it's not ready. Returns retriever or None."""
     global retriever
+    if retriever is not None:
+        return retriever
     try:
         milvus_host = os.getenv("MILVUS_HOST", "127.0.0.1")
         milvus_port = os.getenv("MILVUS_PORT", "19530")
@@ -30,10 +31,18 @@ async def startup_event():
     except Exception as e:
         print(f"⚠ Warning: Could not initialize retriever: {str(e)}")
         print("  API will run in LLM-only mode without RAG capabilities")
+        retriever = None
+    return retriever
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize the retriever on startup (best effort)."""
+    _init_retriever_if_needed()
 
 class QueryRequest(BaseModel):
     query: str
-    model: str = "moonshotai/kimi-k2"
+    # Default to local Ollama model; can be overridden per-request
+    model: str = os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b")
     max_tokens: int = 2000
     temperature: float = 0.7
     top_k: int = 5
@@ -66,16 +75,20 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {
-        "status": "healthy",
-        "milvus_connected": retriever is not None
-    }
+    # Best-effort re-init to reflect live status without requiring restart
+    _init_retriever_if_needed()
+    return {"status": "healthy", "milvus_connected": retriever is not None}
+
+"""
+Note: LLM diagnostics endpoint was removed to keep the API lean.
+Ensure local Ollama is running and OLLAMA_API_BASE is set.
+"""
 
 @app.post("/search")
 async def search_patents(query: str, top_k: int = 5):
     """Search for relevant patents without LLM generation."""
-    if retriever is None:
-        raise HTTPException(status_code=503, detail="Retriever not initialized. Check Milvus connection.")
+    if _init_retriever_if_needed() is None:
+        raise HTTPException(status_code=503, detail="Retriever not initialized. Ensure Milvus is healthy and collection exists.")
     
     try:
         results = retriever.search(query, top_k=top_k)
@@ -93,7 +106,11 @@ async def query_patents(request: QueryRequest):
         # Retrieve relevant documents if RAG is enabled
         if request.use_rag and retriever is not None:
             try:
-                results = retriever.search(request.query, top_k=request.top_k)
+                # Ensure retriever ready at request time
+                if _init_retriever_if_needed() is None:
+                    results = []
+                else:
+                    results = retriever.search(request.query, top_k=request.top_k)
                 retrieved_docs = results
                 
                 # Build context from retrieved documents
