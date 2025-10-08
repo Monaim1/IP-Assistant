@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 from utils import get_LLM_response, stream_LLM_response
 from retriever import PatentRetriever
 
-# Load environment variables
 load_dotenv()
 
 app = FastAPI(
@@ -16,7 +15,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Initialize retriever (set at startup)
 retriever = None
 
 @app.on_event("startup")
@@ -35,7 +33,6 @@ async def startup_event():
 
 class QueryRequest(BaseModel):
     query: str
-    # Default to local Ollama model; can be overridden per-request
     model: str = os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b")
     max_tokens: int = 2000
     temperature: float = 0.7
@@ -90,14 +87,12 @@ async def query_patents(request: QueryRequest):
     try:
         retrieved_docs = None
         context = None
-        
-        # Retrieve relevant documents if RAG is enabled
+
         if request.use_rag and retriever is not None:
             try:
                 results = retriever.search(request.query, top_k=request.top_k)
                 retrieved_docs = results
-                
-                # Build context from retrieved documents
+
                 if results:
                     context_parts = []
                     for i, doc in enumerate(results, 1):
@@ -107,9 +102,7 @@ async def query_patents(request: QueryRequest):
                     context = "\n\n".join(context_parts)
             except Exception as e:
                 print(f"Retrieval warning: {str(e)}")
-                # Continue without RAG if retrieval fails
-        
-        # Build the prompt with context if available
+
         if context:
             prompt = (
                 "Using the retrieved patent documents below, assess the novelty and patentability of the user's idea.\n\n"
@@ -119,8 +112,7 @@ async def query_patents(request: QueryRequest):
             )
         else:
             prompt = f"Assess the novelty and patentability of the following idea:\n\n{request.query}"
-        
-        # Get LLM response
+
         response = get_LLM_response(
             prompt=prompt,
             model=request.model,

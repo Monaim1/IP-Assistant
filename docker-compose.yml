@@ -1,6 +1,5 @@
 services:
 
-  # RAG dependencies (enable with: --profile rag)
   etcd:
     image: quay.io/coreos/etcd:v3.5.5
     profiles: ["rag"]
