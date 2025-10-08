@@ -22,3 +22,7 @@ dependencies = [
     "uvicorn>=0.15.0",
     "orjson>=3.10.0",
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ip_assistant*"]

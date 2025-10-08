@@ -8,6 +8,22 @@ A Retrieval-Augmented Generation (RAG) system for patent analysis, implementing 
 - **Hybrid Retrieval**: Combines vector similarity (Milvus) and lexical BM25 (Elasticsearch/OpenSearch)
 - **Re-ranking**: Implements cross-encoder or LLM-based scoring for improved relevance
 
+## Project Structure
+```
+ip_assistant/
+├── __init__.py
+├── ingestion.py          # Milvus ingestion pipeline
+├── retriever.py          # Milvus-backed retriever class
+├── utils.py              # LLM client helpers
+├── evaluation.py         # Retrieval evaluation helpers
+├── api/
+│   ├── __init__.py
+│   └── app.py            # FastAPI application entrypoint
+└── ui/
+    ├── __init__.py
+    └── chat_ui.py        # Streamlit frontend
+```
+
 ## Getting Started
 
 ### 1. Prerequisites
@@ -35,7 +51,7 @@ docker-compose ps
 
 ```
 ## Run the ingestion pipeline (using the API service container)
-docker-compose exec api python ingestion.py --input-dir /path/to/patents
+docker-compose exec api python -m ip_assistant.ingestion --input-dir /path/to/patents
 ```
 
 ### Access the API

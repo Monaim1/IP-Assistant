@@ -1,8 +1,6 @@
 from typing import List, Dict, Callable, Iterable
 import pandas as pd
-from retriever import PatentRetriever
-
-
+from ip_assistant.retriever import PatentRetriever
 
 def _first_hit_rank(retrieved: List[str], relevant: str, k_cap: int) -> int:
     """1-indexed rank of the first relevant doc within top-k_cap; k_cap+1 if not found."""

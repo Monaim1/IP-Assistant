@@ -4,8 +4,8 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict
 import os
 from dotenv import load_dotenv
-from utils import get_LLM_response, stream_LLM_response
-from retriever import PatentRetriever
+from ip_assistant.utils import get_LLM_response, stream_LLM_response
+from ip_assistant.retriever import PatentRetriever
 
 load_dotenv()
 
