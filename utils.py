@@ -7,7 +7,7 @@ def get_LLM_client():
     """Initialize and return the OpenAI client with Ollama settings."""
     load_dotenv()
     return OpenAI(
-        base_url=os.getenv("OLLAMA_API_BASE", "http://ollama:11434/v1"),
+        base_url=os.getenv("OLLAMA_API_BASE", "http://localhost:11434/v1"),
         api_key="ollama",  # API key is not used by Ollama
     )
 
