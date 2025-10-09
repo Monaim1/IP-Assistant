@@ -93,3 +93,22 @@ After code changes:
 ```bash
 docker compose up -d --build api
 ```
+
+## Ingestion
+```bash
+docker compose exec api uv run python -m ip_assistant.ingestion
+```
+
+## testing opensearch & milvus Databases
+
+```bash
+##opensearch
+
+curl -X GET "localhost:9200/_cat/indices?v"
+
+curl -X GET "localhost:9200/ip_chunks_bm25/_search?size=5&pretty"
+
+
+## milvus
+curl -X POST "http://localhost:8000/search?top_k=3&query=photovoltaic%20solar%20panels"
+```
