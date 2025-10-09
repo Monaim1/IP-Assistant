@@ -13,6 +13,14 @@ from pymilvus import (
     connections, FieldSchema, CollectionSchema, DataType, Collection,
     utility
 )
+from typing import Optional
+
+# Optional OpenSearch client for BM25 indexing
+try:
+    from opensearchpy import OpenSearch, helpers as os_helpers  # type: ignore
+except Exception:  # pragma: no cover
+    OpenSearch = None  # type: ignore
+    os_helpers = None  # type: ignore
 
 # Config
 MILVUS_HOST = os.getenv("MILVUS_HOST", "127.0.0.1")
@@ -26,8 +34,15 @@ CHUNK_SIZE = 256
 CHUNK_OVERLAP = 50       
 METRIC = "COSINE"        # Similarity metric
 
+# OpenSearch / Elasticsearch (BM25) settings
+OS_ENABLED = os.getenv("BM25_ENABLED", "true").lower() in {"1", "true", "yes"}
+OS_HOST = os.getenv("OPENSEARCH_HOST") or os.getenv("ELASTICSEARCH_HOST") or "http://localhost:9200"
+OS_USER = os.getenv("OPENSEARCH_USER", "")
+OS_PASS = os.getenv("OPENSEARCH_PASSWORD", "")
+OS_INDEX = os.getenv("OPENSEARCH_INDEX", "ip_chunks_bm25")
+
 # Which long text fields to chunk/ingest as retrievable content:
-TEXT_FIELDS = ["abstract", "summary"] 
+TEXT_FIELDS = ["claims", "summary"] 
 
 # Fields to extract from raw JSON data
 RELEVANT_FIELDS = [
@@ -47,6 +62,7 @@ RELEVANT_FIELDS = [
     # Retrievable Text
     "title",
     "abstract",
+    "claims",
     "summary",
 ]
 def get_IP_data(ip_limit=20):
@@ -177,6 +193,7 @@ coll = None
 model = None
 tokenizer = None
 rows = None
+os_client: Optional["OpenSearch"] = None
 
 def compute_embeddings():
     """Compute embeddings for all None values in rows['embedding']."""
@@ -198,6 +215,33 @@ def flush_batch():
     
     data_to_insert = [rows[field.name] for field in coll.schema.fields if field.name != "pk"]
     coll.insert(data_to_insert)
+
+    # Also bulk-index into OpenSearch for BM25 (if available)
+    try:
+        if OS_ENABLED and os_client is not None and os_helpers is not None:
+            actions = []
+            n = len(rows["text"])
+            for i in range(n):
+                doc = {
+                    "publication_number": rows["publication_number"][i],
+                    "application_number": rows["application_number"][i],
+                    "patent_number": rows["patent_number"][i],
+                    "section": rows["section"][i],
+                    "decision": rows["decision"][i],
+                    "main_cpc_label": rows["main_cpc_label"][i],
+                    "main_ipcr_label": rows["main_ipcr_label"][i],
+                    "text": rows["text"][i],
+                }
+                actions.append({
+                    "_op_type": "index",
+                    "_index": OS_INDEX,
+                    "_source": doc,
+                })
+            if actions:
+                os_helpers.bulk(os_client, actions, request_timeout=120)
+    except Exception as e:
+        # Non-fatal: continue ingestion even if BM25 is unavailable
+        print(f"[BM25 indexing skipped] {e}")
     
     # Clear all buffers
     for k in rows:
@@ -256,10 +300,45 @@ def clear_collection() -> None:
 
 def ingest_patents(ip_limit: int = 20) -> None:
     """Main ingestion pipeline."""
-    global coll, model, tokenizer, rows
+    global coll, model, tokenizer, rows, os_client
     
     clear_collection()
     coll = init_milvus_collection()
+
+    # Initialize OpenSearch client and index (optional)
+    if OS_ENABLED and OpenSearch is not None:
+        try:
+            auth = (OS_USER, OS_PASS) if OS_USER or OS_PASS else None
+            os_client = OpenSearch(OS_HOST, http_auth=auth)  # type: ignore
+            # Create index if missing
+            if not os_client.indices.exists(index=OS_INDEX):
+                os_client.indices.create(
+                    index=OS_INDEX,
+                    body={
+                        "settings": {
+                            "index": {
+                                "number_of_shards": 1,
+                                "number_of_replicas": 0
+                            }
+                        },
+                        "mappings": {
+                            "properties": {
+                                "publication_number": {"type": "keyword"},
+                                "application_number": {"type": "keyword"},
+                                "patent_number": {"type": "keyword"},
+                                "section": {"type": "keyword"},
+                                "decision": {"type": "keyword"},
+                                "main_cpc_label": {"type": "keyword"},
+                                "main_ipcr_label": {"type": "keyword"},
+                                "text": {"type": "text"}
+                            }
+                        }
+                    },
+                )
+            print(f"✓ BM25 index ready at {OS_HOST} index={OS_INDEX}")
+        except Exception as e:
+            os_client = None
+            print(f"⚠ BM25 disabled: {e}")
     
     # Initialize models
     model = SentenceTransformer(EMB_MODEL_NAME)

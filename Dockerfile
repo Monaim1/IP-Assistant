@@ -14,7 +14,8 @@ RUN pip install streamlit
 
 COPY pyproject.toml uv.lock ./
 
-RUN uv sync --frozen --no-dev
+# Allow uv to resolve new dependencies from pyproject.toml
+RUN uv sync --no-dev
 
 COPY . .
 
