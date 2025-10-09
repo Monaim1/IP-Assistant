@@ -58,6 +58,29 @@ services:
       timeout: 20s
       retries: 3
 
+  opensearch:
+    image: opensearchproject/opensearch:2.14.0
+    container_name: opensearch
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+
   api:
     build:
       context: .
@@ -67,6 +90,8 @@ services:
     environment:
       - MILVUS_HOST=milvus-standalone
       - MILVUS_PORT=19530
+      - BM25_ENABLED=true
+      - OPENSEARCH_HOST=http://opensearch:9200
       - OLLAMA_API_BASE=http://host.docker.internal:11434/v1
       - OLLAMA_MODEL=qwen2.5:1.5b
     ports:
@@ -78,6 +103,9 @@ services:
     # Enable resolving host.docker.internal inside container
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      opensearch:
+        condition: service_healthy
   
   chat:
     build: .
