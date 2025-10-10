@@ -138,6 +138,14 @@ wheels = [
 ]
 
 [[package]]
+name = "events"
+version = "0.5"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/25/ed/e47dec0626edd468c84c04d97769e7ab4ea6457b7f54dcb3f72b17fcd876/Events-0.5-py3-none-any.whl", hash = "sha256:a7286af378ba3e46640ac9825156c93bdba7502174dd696090fdfcd4d80a1abd", size = 6758, upload-time = "2023-07-31T08:23:13.645Z" },
+]
+
+[[package]]
 name = "faiss-cpu"
 version = "1.12.0"
 source = { registry = "https://pypi.org/simple" }
@@ -374,6 +382,8 @@ dependencies = [
     { name = "langchain" },
     { name = "ollama" },
     { name = "openai" },
+    { name = "opensearch-py" },
+    { name = "orjson" },
     { name = "pandas" },
     { name = "pydantic" },
     { name = "pymilvus" },
@@ -393,6 +403,8 @@ requires-dist = [
     { name = "langchain", specifier = ">=0.3.27" },
     { name = "ollama", specifier = ">=0.6.0" },
     { name = "openai", specifier = ">=2.1.0" },
+    { name = "opensearch-py", specifier = ">=2.4.2" },
+    { name = "orjson", specifier = ">=3.10.0" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "pydantic", specifier = ">=1.8.0" },
     { name = "pymilvus", specifier = ">=2.6.2" },
@@ -863,6 +875,22 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1a/dd/4d4d46a06943e37c95b6e388237e1e38d1e9aab264ff070f86345d60b7a4/openai-2.1.0.tar.gz", hash = "sha256:47f3463a5047340a989b4c0cd5378054acfca966ff61a96553b22f098e3270a2", size = 572998, upload-time = "2025-10-02T20:43:15.385Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/68/83/88f64fc8f037885efa8a629d1215f5bc1f037453bab4d4f823b5533319eb/openai-2.1.0-py3-none-any.whl", hash = "sha256:33172e8c06a4576144ba4137a493807a9ca427421dcabc54ad3aa656daf757d3", size = 964939, upload-time = "2025-10-02T20:43:13.568Z" },
+]
+
+[[package]]
+name = "opensearch-py"
+version = "3.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "events" },
+    { name = "python-dateutil" },
+    { name = "requests" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b8/58/ecec7f855aae7bcfb08f570088c6cb993f68c361a0727abab35dbf021acb/opensearch_py-3.0.0.tar.gz", hash = "sha256:ebb38f303f8a3f794db816196315bcddad880be0dc75094e3334bc271db2ed39", size = 248890, upload-time = "2025-06-17T05:39:48.453Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/e0/69fd114c607b0323d3f864ab4a5ecb87d76ec5a172d2e36a739c8baebea1/opensearch_py-3.0.0-py3-none-any.whl", hash = "sha256:842bf5d56a4a0d8290eda9bb921c50f3080e5dc4e5fefb9c9648289da3f6a8bb", size = 371491, upload-time = "2025-06-17T05:39:46.539Z" },
 ]
 
 [[package]]

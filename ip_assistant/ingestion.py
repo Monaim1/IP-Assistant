@@ -216,7 +216,7 @@ def flush_batch():
     data_to_insert = [rows[field.name] for field in coll.schema.fields if field.name != "pk"]
     coll.insert(data_to_insert)
 
-    # Also bulk-index into OpenSearch for BM25 (if available)
+    # Also bulk-index into OpenSearch for BM25 
     try:
         if OS_ENABLED and os_client is not None and os_helpers is not None:
             actions = []
