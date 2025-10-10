@@ -140,7 +140,6 @@ class PatentRetriever:
         port: str = "19530",
         milvus: Optional[MilvusRetriever] = None,
         bm25: Optional[BM25Client] = None,
-        hybrid_alpha: Optional[float] = None,
     ):
         self.hybrid_alpha = 0.6
         # Components
@@ -154,7 +153,7 @@ class PatentRetriever:
                 port=port,
             )
         )
-        self.bm25 = bm25 if bm25 is not None else BM25Client.build_from_env()
+        self.bm25 = BM25Client.build_from_env()
 
     def search(
         self,
@@ -182,18 +181,15 @@ class PatentRetriever:
 
         # Hybrid combine
         combined = self._combine_results(vec_results, bm25_results, top_k)
-        return combined
+        return combined, vec_results, bm25_results
 
     def _combine_results(self, vec: List[Dict], bm25: List[Dict], top_k: int) -> List[Dict]:
-        # Helper to normalize a list of scores
-        def normalize(scores: List[float]) -> Tuple[float, float]:
-            if not scores:
-                return (0.0, 0.0)
-            mn = min(scores)
-            mx = max(scores)
-            return (mn, mx)
+        """Combine results using Reciprocal Rank Fusion (RRF).
 
-        # Build maps by unique key (chunk-level)
+        RRF score = sum_i 1 / (k + rank_i), where `rank_i` is 1-based
+        rank within each list and `k` (typically 60) dampens tail influence.
+        """
+
         def key_of(d: Dict) -> str:
             return f"{d.get('publication_number')}|{d.get('section')}|{d.get('text')}"
 
@@ -207,27 +203,23 @@ class PatentRetriever:
             else:
                 m[k] = {**r}
 
-        # Normalize scores
-        v_scores = [d.get("_v_score", 0.0) for d in m.values() if isfinite(d.get("_v_score", 0.0))]
-        b_scores = [d.get("_bm25_score", 0.0) for d in m.values() if isfinite(d.get("_bm25_score", 0.0))]
-        v_mn, v_mx = normalize(v_scores)
-        b_mn, b_mx = normalize(b_scores)
+        # Compute ranks within each list (defensive sort by their own scores)
+        vec_sorted = sorted(vec, key=lambda d: d.get("_v_score", d.get("score", 0.0)), reverse=True)
+        bm25_sorted = sorted(bm25, key=lambda d: d.get("_bm25_score", d.get("score", 0.0)), reverse=True)
+        rank_vec = {key_of(d): i for i, d in enumerate(vec_sorted, start=1)}
+        rank_bm25 = {key_of(d): i for i, d in enumerate(bm25_sorted, start=1)}
+
+        rrf_k = 60
 
         out: List[Dict] = []
-        for d in m.values():
-            v = d.get("_v_score", None)
-            b = d.get("_bm25_score", None)
-            v_norm = ((v - v_mn) / (v_mx - v_mn)) if (v is not None and v_mx > v_mn) else (1.0 if v is not None else 0.0)
-            b_norm = ((b - b_mn) / (b_mx - b_mn)) if (b is not None and b_mx > b_mn) else (1.0 if b is not None else 0.0)
-            # Weighted combine; if one side missing, use the other
-            if v is not None and b is not None:
-                final = self.hybrid_alpha * v_norm + (1.0 - self.hybrid_alpha) * b_norm
-            elif v is not None:
-                final = v_norm
-            else:
-                final = b_norm
-            d2 = {k: v for k, v in d.items() if not k.startswith("_")}
-            d2["score"] = float(final)
+        for k, d in m.items():
+            score = 0.0
+            if k in rank_vec:
+                score += 1.0 / (rrf_k + rank_vec[k])
+            if k in rank_bm25:
+                score += 1.0 / (rrf_k + rank_bm25[k])
+            d2 = {kk: vv for kk, vv in d.items() if not kk.startswith("_")}
+            d2["score"] = float(score)
             out.append(d2)
 
         out.sort(key=lambda x: x.get("score", 0.0), reverse=True)
