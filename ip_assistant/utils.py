@@ -1,15 +1,19 @@
-from openai import OpenAI
+import json
 import os
 from typing import Optional, Iterator
+from urllib import request as urlrequest
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from dotenv import load_dotenv
 
 def get_LLM_client():
-    """Initialize and return the OpenAI client with Ollama settings."""
+
     load_dotenv()
-    return OpenAI(
-        base_url=os.getenv("OLLAMA_API_BASE", "http://localhost:11434/v1"),
-        api_key="ollama",  # API key is not used by Ollama
-    )
+    base_url = os.getenv("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta")
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise Exception("Missing GEMINI_API_KEY (or GOOGLE_API_KEY) in environment")
+    return {"base_url": base_url, "api_key": api_key}
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a senior patent analyst. Given a user-described idea and any "
@@ -28,67 +32,97 @@ DEFAULT_SYSTEM_PROMPT = (
 
 def get_LLM_response(
     prompt: str,
-    model: str = "qwen2.5:1.5b",
-    max_tokens: int = 2000,
-    temperature: float = 0.7,
+    model: str = "gemini-2.0-flash",
+    max_tokens: int = 30000,
+    temperature: float = 0.97,
     system_prompt: Optional[str] = None,
     **kwargs
 ) -> str:
     try:
-        client = get_LLM_client()
+        cfg = get_LLM_client()
         system_msg = system_prompt or os.getenv("SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT)
-        messages = [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": prompt},
-        ]
-        completion = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            **kwargs,
+
+        if not str(model).startswith("gemini"):
+            model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+
+        url = f"{cfg['base_url']}/models/{model}:generateContent?{urlencode({'key': cfg['api_key']})}"
+
+        payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{"text": prompt}],
+                }
+            ],
+            "generationConfig": {
+                "temperature": float(temperature),
+                "maxOutputTokens": int(max_tokens),
+            },
+            "systemInstruction": {
+                "parts": [{"text": system_msg}],
+            },
+        }
+
+        req = urlrequest.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
         )
-        return completion.choices[0].message.content
+
+        try:
+            with urlrequest.urlopen(req) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except HTTPError as he:
+            try:
+                err_body = he.read().decode("utf-8")
+            except Exception:
+                err_body = str(he)
+            raise Exception(f"Gemini HTTPError {he.code}: {err_body}")
+        except URLError as ue:
+            raise Exception(f"Gemini URLError: {ue.reason}")
+
+        # Extract text from the first candidate
+        try:
+            candidates = data.get("candidates", [])
+            if not candidates:
+                raise Exception(f"No candidates in response: {data}")
+            parts = candidates[0].get("content", {}).get("parts", [])
+            text_segments = [p.get("text", "") for p in parts if isinstance(p, dict)]
+            return "".join(text_segments).strip()
+        except Exception as parse_err:
+            raise Exception(f"Failed to parse Gemini response: {parse_err}")
     except Exception as e:
         raise Exception(f"Error getting AI response: {str(e)}")
 
 
 def stream_LLM_response(
     prompt: str,
-    model: str = "qwen2.5:1.5b",
+    model: str = "gemini-2.0-flash",
     max_tokens: int = 2000,
     temperature: float = 0.7,
     system_prompt: Optional[str] = None,
     **kwargs
 ) -> Iterator[str]:
-    """Yield model tokens incrementally using OpenAI-compatible streaming."""
-    client = get_LLM_client()
-    system_msg = system_prompt or os.getenv("SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT)
-    messages = [
-        {"role": "system", "content": system_msg},
-        {"role": "user", "content": prompt},
-    ]
+    """Yield model response in chunks.
 
+    Uses non-streaming Gemini endpoint and yields the text in pieces to
+    maintain a streaming-like interface without extra dependencies.
+    """
     try:
-        stream = client.chat.completions.create(
+        full_text = get_LLM_response(
+            prompt=prompt,
             model=model,
-            messages=messages,
             max_tokens=max_tokens,
             temperature=temperature,
-            stream=True,
+            system_prompt=system_prompt,
             **kwargs,
         )
-        for chunk in stream:
-            try:
-                delta = chunk.choices[0].delta
-                content = getattr(delta, "content", None)
-                if content:
-                    yield content
-            except Exception:
-                # Be resilient to shape differences
-                pass
+        # Yield in reasonably sized chunks
+        chunk_size = int(os.getenv("STREAM_CHUNK_SIZE", "256"))
+        for i in range(0, len(full_text), chunk_size):
+            yield full_text[i : i + chunk_size]
     except Exception as e:
-        # Propagate as a final message to the stream consumer
         yield f"\n[stream error] {str(e)}\n"
 
 if __name__ == "__main__":
