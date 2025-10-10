@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Optional
 import os
 from dotenv import load_dotenv
 from ip_assistant.utils import get_LLM_response, stream_LLM_response
@@ -90,7 +90,7 @@ async def query_patents(request: QueryRequest):
 
         if request.use_rag and retriever is not None:
             try:
-                results = retriever.search(request.query, top_k=request.top_k)
+                results, _, _ = retriever.search(request.query, top_k=request.top_k)
                 retrieved_docs = results
 
                 if results:

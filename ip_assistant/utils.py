@@ -101,8 +101,6 @@ def stream_LLM_response(
     model: str = "gemini-2.0-flash",
     max_tokens: int = 2000,
     temperature: float = 0.7,
-    system_prompt: Optional[str] = None,
-    **kwargs
 ) -> Iterator[str]:
 
     try:
@@ -111,10 +109,7 @@ def stream_LLM_response(
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
-            system_prompt=system_prompt,
-            **kwargs,
         )
-        # Yield in reasonably sized chunks
         chunk_size = int(os.getenv("STREAM_CHUNK_SIZE", "256"))
         for i in range(0, len(full_text), chunk_size):
             yield full_text[i : i + chunk_size]

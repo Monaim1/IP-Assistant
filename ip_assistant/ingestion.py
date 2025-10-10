@@ -62,9 +62,10 @@ RELEVANT_FIELDS = [
     # Retrievable Text
     "title",
     "abstract",
-    "claims",
+    "claims",  ## The legally enforceable boundaries of the invention — the essence of what’s protected.
     "summary",
 ]
+
 def get_IP_data(ip_limit=20):
     """Load and filter IP data from JSON files."""
     ip_files = [json.load(open("RawData/2018/" + file)) for file in os.listdir(r"RawData/2018")[:ip_limit]] 
