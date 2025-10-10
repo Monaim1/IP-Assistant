@@ -27,20 +27,20 @@ DEFAULT_SYSTEM_PROMPT = (
     "5) Non-obviousness / Inventive step (Section 103 / Art. 56)\n"
     "6) Risks, gaps, or enablement concerns\n"
     "7) Recommendations (claim angles, search next steps).\n"
-    "Be specific and avoid generic statements. If context is insufficient, ask 3–5 focused clarifying questions."
+    "## Be specific and avoid generic statements."
+    "## If no context is provided, state that no relevant prior art was found."
+    "## IF user idea is missing or unclear, state that clearly. withougt making assumptions and going off on tangents, and ask for clarification."
+    "## Use a formal tone appropriate for legal/technical analysis."
 )
 
 def get_LLM_response(
     prompt: str,
     model: str = "gemini-2.0-flash",
     max_tokens: int = 30000,
-    temperature: float = 0.97,
-    system_prompt: Optional[str] = None,
-    **kwargs
+    temperature: float = 0.95,
 ) -> str:
     try:
         cfg = get_LLM_client()
-        system_msg = system_prompt or os.getenv("SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT)
 
         if not str(model).startswith("gemini"):
             model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
@@ -59,7 +59,7 @@ def get_LLM_response(
                 "maxOutputTokens": int(max_tokens),
             },
             "systemInstruction": {
-                "parts": [{"text": system_msg}],
+                "parts": [{"text": DEFAULT_SYSTEM_PROMPT}],
             },
         }
 
@@ -104,11 +104,7 @@ def stream_LLM_response(
     system_prompt: Optional[str] = None,
     **kwargs
 ) -> Iterator[str]:
-    """Yield model response in chunks.
 
-    Uses non-streaming Gemini endpoint and yields the text in pieces to
-    maintain a streaming-like interface without extra dependencies.
-    """
     try:
         full_text = get_LLM_response(
             prompt=prompt,
