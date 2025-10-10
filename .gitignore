@@ -2,3 +2,4 @@ RawData/2018
 .DS_Store
 .env
 RawData/2018.tar.gz
+*.pyc
