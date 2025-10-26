@@ -103,3 +103,22 @@ Planned Enhancements:
   - Construct prompt with query and context
   - Send to LLM (Claude/GPT/Openrouter)
   - Generate structured output (answer + cited patent IDs/chunks)
+
+## Observability (MLflow)
+
+- Basic metrics and artifacts are logged per request using MLflow:
+  - Metrics: `retrieval_latency_ms`, `llm_latency_ms`, `request_latency_ms`, `chunks_retrieved`, `tokens_used`
+  - Artifacts: `query.txt`, `prompt.txt`, `context.txt` (if any), `output.txt`, `retrieved.json` (chunk summary)
+- Configuration:
+  - By default logs to local file store at `./mlruns` (set via `MLFLOW_TRACKING_URI=file:./mlruns`).
+  - To use an existing tracking server (e.g., with SQLite db `mlruns.db`), set `MLFLOW_TRACKING_URI` accordingly, e.g. `sqlite:///mlruns.db` (requires running `mlflow server`).
+  - Change experiment name with `MLFLOW_EXPERIMENT` (default: `IP-Assistant`).
+
+View runs locally:
+```
+mlflow ui --backend-store-uri file:./mlruns --port 5000
+# or if you run a server with SQLite
+mlflow ui --backend-store-uri sqlite:///mlruns.db --default-artifact-root ./mlartifacts --port 5000
+```
+
+Docker note: If the API runs in Docker and your MLflow server runs on the host, use `MLFLOW_TRACKING_URI=http://host.docker.internal:5000` (not `http://localhost:5000`). If the URI is unreachable, the API auto‑falls back to `file:./mlruns` with a short timeout.
