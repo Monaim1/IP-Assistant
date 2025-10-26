@@ -3,3 +3,6 @@ RawData/2018
 .env
 RawData/2018.tar.gz
 *.pyc
+*.png
+*.excalidraw
+mlruns/
