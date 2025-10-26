@@ -4,7 +4,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 from dotenv import load_dotenv
-from ip_assistant.utils import get_LLM_response, stream_LLM_response
+from ip_assistant.utils import get_LLM_response, stream_LLM_response, DEFAULT_SYSTEM_PROMPT
+from ip_assistant.observability import RunLogger, summarize_chunks
 from ip_assistant.retriever import PatentRetriever
 
 load_dotenv()
@@ -76,7 +77,23 @@ async def search_patents(query: str, top_k: int = 5):
         raise HTTPException(status_code=503, detail="Retriever not initialized. Ensure Milvus is healthy and collection exists.")
     
     try:
-        results = retriever.search(query, top_k=top_k)
+        import time
+        t0 = time.perf_counter()
+        with RunLogger(run_name="search", tags={"endpoint": "/search"}) as run:
+            run.log_params({"top_k": top_k})
+            results = None
+            with run.timeit("retrieval_latency"):
+                results = retriever.search(query, top_k=top_k)
+
+            # Handle both list results and (combined, vec, bm25)
+            combined = results[0] if isinstance(results, tuple) else results
+            run.log_json("retrieved.json", summarize_chunks(combined))
+            run.log_text("query.txt", query)
+            run.log_metrics({
+                "chunks_retrieved": float(len(combined or [])),
+                "request_latency_ms": (time.perf_counter() - t0) * 1000.0,
+            })
+
         return {"query": query, "results": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
@@ -85,47 +102,76 @@ async def search_patents(query: str, top_k: int = 5):
 async def query_patents(request: QueryRequest):
     """Query the RAG system with optional retrieval."""
     try:
-        retrieved_docs = None
-        context = None
+        import time
+        t0 = time.perf_counter()
+        with RunLogger(run_name="query", tags={"endpoint": "/query"}) as run:
+            run.log_params({
+                "model": request.model,
+                "use_rag": request.use_rag,
+                "top_k": request.top_k,
+                "max_tokens": request.max_tokens,
+                "temperature": request.temperature,
+            })
 
-        if request.use_rag and retriever is not None:
-            try:
-                results, _, _ = retriever.search(request.query, top_k=request.top_k)
-                retrieved_docs = results
+            retrieved_docs = None
+            context = None
 
-                if results:
-                    context_parts = []
-                    for i, doc in enumerate(results, 1):
-                        context_parts.append(
-                            f"Document {i} (Patent: {doc.get('publication_number', 'N/A')}, Score: {doc.get('score', 0):.3f}):\n{doc.get('text', '')}"
-                        )
-                    context = "\n\n".join(context_parts)
-            except Exception as e:
-                print(f"Retrieval warning: {str(e)}")
+            if request.use_rag and retriever is not None:
+                try:
+                    with run.timeit("retrieval_latency"):
+                        results = retriever.search(request.query, top_k=request.top_k)
+                    combined = results[0] if isinstance(results, tuple) else results
+                    retrieved_docs = combined
+                    run.log_metrics({"chunks_retrieved": float(len(combined or []))})
+                    run.log_json("retrieved.json", summarize_chunks(combined))
 
-        if context:
-            prompt = (
-                "Using the retrieved patent documents below, assess the novelty and patentability of the user's idea.\n\n"
-                f"Retrieved Documents:\n{context}\n\n"
-                f"User Idea / Question: {request.query}\n\n"
-                "Provide a concise, structured assessment and cite any relevant patents."
-            )
-        else:
-            prompt = f"Assess the novelty and patentability of the following idea:\n\n{request.query}"
+                    if combined:
+                        context_parts = []
+                        for i, doc in enumerate(combined, 1):
+                            context_parts.append(
+                                f"Document {i} (Patent: {doc.get('publication_number', 'N/A')}, Score: {doc.get('score', 0):.3f}):\n{doc.get('text', '')}"
+                            )
+                        context = "\n\n".join(context_parts)
+                except Exception as e:
+                    print(f"Retrieval warning: {str(e)}")
 
-        response = get_LLM_response(
-            prompt=prompt,
-            model=request.model,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature
-        )
-        
-        return {
-            "response": response,
-            "model": request.model,
-            "tokens_used": len(response.split()),
-            "retrieved_documents": retrieved_docs if request.use_rag else None
-        }
+            if context:
+                prompt = (
+                    "Using the retrieved patent documents below, assess the novelty and patentability of the user's idea.\n\n"
+                    f"Retrieved Documents:\n{context}\n\n"
+                    f"User Idea / Question: {request.query}\n\n"
+                    "Provide a concise, structured assessment and cite any relevant patents."
+                )
+            else:
+                prompt = f"Assess the novelty and patentability of the following idea:\n\n{request.query}"
+
+            run.log_text("prompt.txt", prompt)
+            run.log_text("system_prompt.txt", DEFAULT_SYSTEM_PROMPT)
+            if context:
+                run.log_text("context.txt", context)
+            run.log_text("query.txt", request.query)
+
+            with run.timeit("llm_latency"):
+                response = get_LLM_response(
+                    prompt=prompt,
+                    model=request.model,
+                    max_tokens=request.max_tokens,
+                    temperature=request.temperature
+                )
+
+            tokens_used = len(response.split())
+            run.log_metrics({"tokens_used": float(tokens_used)})
+            run.log_text("output.txt", response)
+
+            out = {
+                "response": response,
+                "model": request.model,
+                "tokens_used": tokens_used,
+                "retrieved_documents": retrieved_docs if request.use_rag else None
+            }
+            # Log total request latency right before returning
+            run.log_metrics({"request_latency_ms": (time.perf_counter() - t0) * 1000.0})
+            return out
     except Exception as e:
         error_msg = str(e)
         if "Error getting AI response" in error_msg:
@@ -137,43 +183,72 @@ async def query_patents(request: QueryRequest):
 async def query_patents_stream(request: QueryRequest):
     """Stream the LLM answer tokens as they are generated."""
     try:
-        retrieved_docs = None
-        context = None
+        import time
+        t0 = time.perf_counter()
+        with RunLogger(run_name="query_stream", tags={"endpoint": "/query/stream"}) as run:
+            run.log_params({
+                "model": request.model,
+                "use_rag": request.use_rag,
+                "top_k": request.top_k,
+                "max_tokens": request.max_tokens,
+                "temperature": request.temperature,
+            })
 
-        if request.use_rag and retriever is not None:
-            try:
-                results = retriever.search(request.query, top_k=request.top_k)
-                retrieved_docs = results
-                if results:
-                    context_parts = []
-                    for i, doc in enumerate(results, 1):
-                        context_parts.append(
-                            f"Document {i} (Patent: {doc.get('publication_number', 'N/A')}, Score: {doc.get('score', 0):.3f}):\n{doc.get('text', '')}"
-                        )
-                    context = "\n\n".join(context_parts)
-            except Exception:
-                pass
+            retrieved_docs = None
+            context = None
 
-        if context:
-            prompt = (
-                "Using the retrieved patent documents below, assess the novelty and patentability of the user's idea.\n\n"
-                f"Retrieved Documents:\n{context}\n\n"
-                f"User Idea / Question: {request.query}\n\n"
-                "Provide a concise, structured assessment and cite any relevant patents."
-            )
-        else:
-            prompt = f"Assess the novelty and patentability of the following idea:\n\n{request.query}"
+            if request.use_rag and retriever is not None:
+                try:
+                    with run.timeit("retrieval_latency"):
+                        results = retriever.search(request.query, top_k=request.top_k)
+                    combined = results[0] if isinstance(results, tuple) else results
+                    retrieved_docs = combined
+                    run.log_metrics({"chunks_retrieved": float(len(combined or []))})
+                    run.log_json("retrieved.json", summarize_chunks(combined))
+                    if combined:
+                        context_parts = []
+                        for i, doc in enumerate(combined, 1):
+                            context_parts.append(
+                                f"Document {i} (Patent: {doc.get('publication_number', 'N/A')}, Score: {doc.get('score', 0):.3f}):\n{doc.get('text', '')}"
+                            )
+                        context = "\n\n".join(context_parts)
+                except Exception:
+                    pass
 
-        def token_generator():
-            for piece in stream_LLM_response(
-                prompt=prompt,
-                model=request.model,
-                max_tokens=request.max_tokens,
-                temperature=request.temperature,
-            ):
-                yield piece
+            if context:
+                prompt = (
+                    "Using the retrieved patent documents below, assess the novelty and patentability of the user's idea.\n\n"
+                    f"Retrieved Documents:\n{context}\n\n"
+                    f"User Idea / Question: {request.query}\n\n"
+                    "Provide a concise, structured assessment and cite any relevant patents."
+                )
+            else:
+                prompt = f"Assess the novelty and patentability of the following idea:\n\n{request.query}"
 
-        return StreamingResponse(token_generator(), media_type="text/plain; charset=utf-8")
+            run.log_text("prompt.txt", prompt)
+            run.log_text("system_prompt.txt", DEFAULT_SYSTEM_PROMPT)
+            if context:
+                run.log_text("context.txt", context)
+            run.log_text("query.txt", request.query)
+
+            def token_generator():
+                # Not true streaming under the hood; we still time LLM once
+                chunks = []
+                with run.timeit("llm_latency"):
+                    for piece in stream_LLM_response(
+                        prompt=prompt,
+                        model=request.model,
+                        max_tokens=request.max_tokens,
+                        temperature=request.temperature,
+                    ):
+                        chunks.append(piece)
+                        yield piece
+                final_text = "".join(chunks)
+                run.log_metrics({"tokens_used": float(len(final_text.split()))})
+                run.log_text("output.txt", final_text)
+                run.log_metrics({"request_latency_ms": (time.perf_counter() - t0) * 1000.0})
+
+            return StreamingResponse(token_generator(), media_type="text/plain; charset=utf-8")
     except Exception as e:
         error_msg = str(e)
         if "Error getting AI response" in error_msg:
