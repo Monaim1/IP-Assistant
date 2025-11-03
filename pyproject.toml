@@ -23,6 +23,7 @@ dependencies = [
     "orjson>=3.10.0",
     "opensearch-py>=2.4.2",
     "mlflow>=2.14.0",
+    "dspy>=3.0.3",
 ]
 
 [tool.setuptools.packages.find]

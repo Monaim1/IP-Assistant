@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from ip_assistant.utils import get_LLM_response, stream_LLM_response, DEFAULT_SYSTEM_PROMPT
 from ip_assistant.observability import RunLogger, summarize_chunks
 from ip_assistant.retriever import PatentRetriever
+from ip_assistant.agentic_rag import agentic_search
 
 load_dotenv()
 
@@ -83,7 +84,7 @@ async def search_patents(query: str, top_k: int = 5):
             run.log_params({"top_k": top_k})
             results = None
             with run.timeit("retrieval_latency"):
-                results = retriever.search(query, top_k=top_k)
+                results = agentic_search(query, retriever, top_k=top_k, max_loops=3)
 
             # Handle both list results and (combined, vec, bm25)
             combined = results[0] if isinstance(results, tuple) else results
@@ -119,7 +120,7 @@ async def query_patents(request: QueryRequest):
             if request.use_rag and retriever is not None:
                 try:
                     with run.timeit("retrieval_latency"):
-                        results = retriever.search(request.query, top_k=request.top_k)
+                        results = agentic_search(request.query, retriever, top_k=request.top_k, max_loops=3)
                     combined = results[0] if isinstance(results, tuple) else results
                     retrieved_docs = combined
                     run.log_metrics({"chunks_retrieved": float(len(combined or []))})
@@ -200,7 +201,7 @@ async def query_patents_stream(request: QueryRequest):
             if request.use_rag and retriever is not None:
                 try:
                     with run.timeit("retrieval_latency"):
-                        results = retriever.search(request.query, top_k=request.top_k)
+                        results = agentic_search(request.query, retriever, top_k=request.top_k, max_loops=3)
                     combined = results[0] if isinstance(results, tuple) else results
                     retrieved_docs = combined
                     run.log_metrics({"chunks_retrieved": float(len(combined or []))})
