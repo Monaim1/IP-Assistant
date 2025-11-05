@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from ip_assistant.utils import get_LLM_response, stream_LLM_response, DEFAULT_SYSTEM_PROMPT
 from ip_assistant.observability import RunLogger, summarize_chunks
 from ip_assistant.retriever import PatentRetriever
-from ip_assistant.agentic_rag import agentic_search
+from ip_assistant.agentic_search import agentic_search
 
 load_dotenv()
 
@@ -35,7 +35,8 @@ async def startup_event():
 
 class QueryRequest(BaseModel):
     query: str
-    model: str = os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b")
+    # Default to Gemini; not using Ollama anymore
+    model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     max_tokens: int = 2000
     temperature: float = 0.7
     top_k: int = 5
@@ -84,10 +85,10 @@ async def search_patents(query: str, top_k: int = 5):
             run.log_params({"top_k": top_k})
             results = None
             with run.timeit("retrieval_latency"):
-                results = agentic_search(query, retriever, top_k=top_k, max_loops=3)
+                results = agentic_search(query, retriever, top_k=top_k, max_passes=3)
 
-            # Handle both list results and (combined, vec, bm25)
-            combined = results[0] if isinstance(results, tuple) else results
+            # agentic_search returns a flat combined list of docs
+            combined = results
             run.log_json("retrieved.json", summarize_chunks(combined))
             run.log_text("query.txt", query)
             run.log_metrics({
@@ -120,8 +121,8 @@ async def query_patents(request: QueryRequest):
             if request.use_rag and retriever is not None:
                 try:
                     with run.timeit("retrieval_latency"):
-                        results = agentic_search(request.query, retriever, top_k=request.top_k, max_loops=3)
-                    combined = results[0] if isinstance(results, tuple) else results
+                        results = agentic_search(request.query, retriever, top_k=request.top_k, max_passes=3)
+                    combined = results
                     retrieved_docs = combined
                     run.log_metrics({"chunks_retrieved": float(len(combined or []))})
                     run.log_json("retrieved.json", summarize_chunks(combined))
@@ -201,8 +202,8 @@ async def query_patents_stream(request: QueryRequest):
             if request.use_rag and retriever is not None:
                 try:
                     with run.timeit("retrieval_latency"):
-                        results = agentic_search(request.query, retriever, top_k=request.top_k, max_loops=3)
-                    combined = results[0] if isinstance(results, tuple) else results
+                        results = agentic_search(request.query, retriever, top_k=request.top_k, max_passes=3)
+                    combined = results
                     retrieved_docs = combined
                     run.log_metrics({"chunks_retrieved": float(len(combined or []))})
                     run.log_json("retrieved.json", summarize_chunks(combined))
