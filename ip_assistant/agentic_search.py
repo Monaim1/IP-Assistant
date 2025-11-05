@@ -4,11 +4,17 @@ from typing import Any, Callable, Dict, List, Optional
 from ip_assistant.retriever import PatentRetriever
 from ip_assistant.utils import get_LLM_response
 import dspy 
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+base_url = os.getenv("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta")
+api_key = os.getenv("GEMINI_API_KEY")
 
 
 
 
-# dspy.configure(lm=dspy.LM(...))
+dspy.configure(lm=dspy.LM('gemini/gemini-2.0-flash'), api_base=base_url ,api_key=api_key)
 # dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))
 
 class PatentSearchSig(dspy.Signature):
